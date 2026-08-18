@@ -8,6 +8,7 @@
 
 
 #import <Photos/Photos.h>
+#import <UIKit/UIKit.h>
 
 #import "GMFetchItem.h"
 

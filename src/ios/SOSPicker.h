@@ -7,6 +7,7 @@
 //
 
 #import <Cordova/CDVPlugin.h>
+#import <UIKit/UIKit.h>
 #import "GMImagePickerController.h"
 
 
