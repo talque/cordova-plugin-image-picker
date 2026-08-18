@@ -11,7 +11,7 @@
 #import "GMAlbumsViewController.h"
 #import "GMGridViewCell.h"
 #import "GMPHAsset.h"
-
+#import <CoreImage/CoreImage.h>
 //#import "PSYBlockTimer.h"
 #import "GMFetchItem.h"
 
@@ -95,7 +95,7 @@ NSString * const GMGridViewCellIdentifier = @"GMGridViewCellIdentifier";
     }
     else
     {
-        if(UIInterfaceOrientationIsLandscape([UIApplication sharedApplication].statusBarOrientation))
+        if(UIInterfaceOrientationIsLandscape([self getOrientation]))
         {
             screenHeight = CGRectGetWidth(picker.view.bounds);
             screenWidth = CGRectGetHeight(picker.view.bounds);
@@ -108,7 +108,7 @@ NSString * const GMGridViewCellIdentifier = @"GMGridViewCellIdentifier";
     }
     
     
-    UICollectionViewFlowLayout *layout = [self collectionViewFlowLayoutForOrientation:[UIApplication sharedApplication].statusBarOrientation];
+    UICollectionViewFlowLayout *layout = [self collectionViewFlowLayoutForOrientation:[self getOrientation]];
     if (self = [super initWithCollectionViewLayout:layout])
     {
         //Compute the thumbnail pixel size:
@@ -472,9 +472,14 @@ NSString * const GMGridViewCellIdentifier = @"GMGridViewCellIdentifier";
             
         }];
         
-        
-            
-        [ self.imageManager requestImageForAsset:asset targetSize:PHImageManagerMaximumSize contentMode:PHImageContentModeDefault options:ph_options resultHandler:^(UIImage *result, NSDictionary *info) {
+        [[PHImageManager defaultManager] requestImageDataForAsset:asset
+                                                          options:ph_options
+                                                    resultHandler:
+         ^(NSData *imageData, NSString *dataUTI, UIImageOrientation orientation, NSDictionary *info) {
+             //CIImage* ciImage = [CIImage imageWithData:imageData];
+             //NSLog(@"Metadata : %@", ciImage.properties);
+             
+       // [ self.imageManager requestImageForAsset:asset targetSize:PHImageManagerMaximumSize contentMode:PHImageContentModeDefault options:ph_options resultHandler:^(UIImage *result, NSDictionary *info) {
             
             //dispatch_async(dispatch_get_main_queue(), ^{
             
@@ -487,35 +492,58 @@ NSString * const GMGridViewCellIdentifier = @"GMGridViewCellIdentifier";
             
             fetch_item.be_progressed = false;
             fetch_item.be_finished = true;
+             
+            NSString *fileName =[asset valueForKey:@"filename"];
+            NSString *fileExtension = [fileName pathExtension];
+             if ([fileExtension containsString:@"heic"]) {
+                 CIImage *ciImage = [CIImage imageWithData:imageData];
+                 NSData* data = [[[CIContext alloc] init] JPEGRepresentationOfImage:ciImage colorSpace:CGColorSpaceCreateDeviceRGB() options:@{}];
+                 imageData = data;
+                 fileExtension = @"jpg";
+             }
+             
             
             //asset.image_fullsize = result;
+            NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
+            NSString *libPath = [[paths objectAtIndex:0] stringByAppendingPathComponent:@"NoCloud"];
             
             NSString * filePath;
             do {
-                filePath = [NSString stringWithFormat:@"%@/%@%03d.%@", docsPath, CDV_PHOTO_PREFIX, docCount++, @"jpg"];
+                
+                filePath = [NSString stringWithFormat:@"%@/%@.%@", libPath, [[NSUUID UUID] UUIDString], [fileExtension lowercaseString]];
             } while ([fileMgr fileExistsAtPath:filePath]);
             
             fetch_item.be_saving_img = true;
             
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                 
+                [imageData writeToFile:filePath atomically:YES];
                 
                 // @BVL: Added orientation-fix to correctly display the returned result
                 
 //              if ( ![ UIImageJPEGRepresentation(result, 1.0f ) writeToFile:filePath atomically:YES ] ) {
 //                  return;
 //              }
-                
+                /*
                 NSLog(@"original orientation: %ld",(UIImageOrientation)result.imageOrientation);
                 
                 UIImage *imageToDisplay = result.fixOrientation; //  UIImage+fixOrientation extension
                 
                 NSLog(@"corrected orientation: %ld",(UIImageOrientation)imageToDisplay.imageOrientation);
-
-                // setting compression to a low value (high compression) impact performance, but not actual img quality
-                if ( ![ UIImageJPEGRepresentation(imageToDisplay, 0.2f ) writeToFile:filePath atomically:YES ] ) {
-                    return;
+                
+                if (info[@"PHImageFileURLKey"]){
+                    NSError* err;
+                    [[NSFileManager defaultManager] copyItemAtPath:info[@"PHImageFileURLKey"] toPath:filePath error:&err];
+                    if (err){
+                        return NSLog(@"%@", err);
+                    }
+                }else{
+                    // setting compression to a low value (high compression) impact performance, but not actual img quality
+                    if ( ![ UIImageJPEGRepresentation(imageToDisplay, 0.2f ) writeToFile:filePath atomically:YES ] ) {
+                        return;
+                    }
                 }
+                */
                 
                 fetch_item.image_fullsize = filePath;
                 fetch_item.be_saving_img = false;
@@ -764,6 +792,15 @@ NSString * const GMGridViewCellIdentifier = @"GMGridViewCellIdentifier";
         [assets addObject:asset];
     }
     return assets;
+}
+
+- (UIInterfaceOrientation) getOrientation {
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *activeWindow = (UIWindowScene *)[[[UIApplication sharedApplication] windows] firstObject];
+        return [activeWindow interfaceOrientation] ?: UIInterfaceOrientationPortrait;
+    } else {
+        return [[UIApplication sharedApplication] statusBarOrientation];
+    }
 }
 
 
